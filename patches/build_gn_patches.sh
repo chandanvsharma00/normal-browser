@@ -60,7 +60,7 @@ add_sources_to_build_gn() {
 
         # Insert after the anchor pattern
         local escaped_anchor
-        escaped_anchor=$(sed 's/[\/&.*[\^$]/\\&/g' <<< "$anchor_pattern")
+        escaped_anchor=$(sed 's/[\/&.*\[\^$]/\\&/g' <<< "$anchor_pattern")
         local escaped_entry
         escaped_entry=$(sed 's/[\/&]/\\&/g' <<< "$entry")
         sed -i "0,/${escaped_anchor}/s/${escaped_anchor}/&\n    ${escaped_entry}/" "$gn_file"
@@ -103,7 +103,7 @@ add_deps_to_build_gn() {
         fi
 
         local escaped_anchor
-        escaped_anchor=$(sed 's/[\/&.*[\^$]/\\&/g' <<< "$deps_anchor")
+        escaped_anchor=$(sed 's/[\/&.*\[\^$]/\\&/g' <<< "$deps_anchor")
         local escaped_dep
         escaped_dep=$(sed 's/[\/&]/\\&/g' <<< "$dep")
         sed -i "0,/${escaped_anchor}/s/${escaped_anchor}/&\n    ${escaped_dep}/" "$gn_file"

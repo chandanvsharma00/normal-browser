@@ -56,7 +56,10 @@ insert_after() {
     fi
 
     # Insert the new line after the first match of the pattern
-    sed -i "0,/$(sed 's/[\/&]/\\&/g' <<< "$pattern")/s/$(sed 's/[\/&]/\\&/g' <<< "$pattern")/&\n$(sed 's/[\/&]/\\&/g' <<< "$new_line")/" "$file"
+    local escaped_pattern escaped_new_line
+    escaped_pattern=$(sed 's/[\/&]/\\&/g' <<< "$pattern")
+    escaped_new_line=$(sed 's/[\/&]/\\&/g' <<< "$new_line")
+    sed -i "0,/${escaped_pattern}/s/${escaped_pattern}/&\n${escaped_new_line}/" "$file"
     HOOK_COUNT=$((HOOK_COUNT + 1))
     echo "  APPLIED: $new_line  →  $file"
     return 0
@@ -87,7 +90,10 @@ insert_before() {
         return 1
     fi
 
-    sed -i "0,/$(sed 's/[\/&]/\\&/g' <<< "$pattern")/s/$(sed 's/[\/&]/\\&/g' <<< "$pattern")/$(sed 's/[\/&]/\\&/g' <<< "$new_line")\n&/" "$file"
+    local escaped_pattern escaped_new_line
+    escaped_pattern=$(sed 's/[\/&]/\\&/g' <<< "$pattern")
+    escaped_new_line=$(sed 's/[\/&]/\\&/g' <<< "$new_line")
+    sed -i "0,/${escaped_pattern}/s/${escaped_pattern}/${escaped_new_line}\n&/" "$file"
     HOOK_COUNT=$((HOOK_COUNT + 1))
     echo "  APPLIED: $new_line  →  $file"
     return 0
