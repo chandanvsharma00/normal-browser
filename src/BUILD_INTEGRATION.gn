@@ -1,0 +1,85 @@
+# Normal Browser — GN Build Configuration for Custom Modules
+# This file is sourced from the top-level BUILD.gn to include
+# our custom modules in the Chromium build.
+#
+# Add to chromium/src/BUILD.gn:
+#   deps += [ "//device_profile_generator", "//software_math", "//tls_randomizer" ]
+
+# This file documents how to wire our modules into Chrome's build system.
+
+# ====================================================================
+# 1. Add dependencies to chrome/android/BUILD.gn
+# ====================================================================
+# In source_set("chrome_java") or the main chrome target:
+#
+#   deps += [
+#     "//device_profile_generator",
+#     "//software_math",
+#     "//tls_randomizer",
+#   ]
+
+# ====================================================================
+# 2. Add Mojo interface to content/common/BUILD.gn
+# ====================================================================
+# In mojom("mojo_bindings"):
+#   sources += [ "ghost_profile.mojom" ]
+
+# ====================================================================
+# 3. Add Java sources to chrome/android/BUILD.gn
+# ====================================================================
+# In android_library("chrome_java"):
+#   sources += [
+#     "java/src/org/nicebrowser/ghost/GhostModeManager.java",
+#     "java/src/org/nicebrowser/ghost/GhostModeMenuHelper.java",
+#   ]
+
+# ====================================================================
+# 4. Add JNI bridge to chrome/browser/BUILD.gn
+# ====================================================================
+# In source_set("browser"):
+#   sources += [
+#     "android/native/ghost_mode_jni_bridge.cc",
+#   ]
+#   deps += [
+#     "//device_profile_generator",
+#   ]
+
+# ====================================================================
+# 5. Wire ProfileStore into Chrome startup
+# ====================================================================
+# In chrome/browser/chrome_browser_main_android.cc:
+#   #include "device_profile_generator/profile_store.h"
+#
+#   In PreMainMessageLoopRun():
+#     normal_browser::DeviceProfileStore::Get();  // Force initialization
+
+# ====================================================================
+# 6. Wire Mojo host into RenderFrameHost
+# ====================================================================
+# In content/browser/renderer_host/render_frame_host_impl.cc:
+#   #include "content/browser/ghost_profile_host.h"
+#
+#   In BindReceiver (for GhostProfileProvider):
+#     auto host = std::make_unique<normal_browser::GhostProfileHost>();
+#     host->BindReceiver(std::move(receiver));
+
+# ====================================================================
+# 7. Wire V8 Math overrides
+# ====================================================================
+# In v8/src/codegen/external-reference.cc:
+#   Replace all ieee754_*_function() calls with our patched versions.
+#   See v8_math_patch.h for the function pointer table.
+
+# ====================================================================
+# 8. Wire BoringSSL TLS patches
+# ====================================================================
+# In third_party/boringssl/src/ssl/handshake_client.cc:
+#   Include boringssl_tls_patch.h
+#   Replace cipher/extension builders with our randomized versions.
+
+# ====================================================================
+# 9. Wire timezone/locale
+# ====================================================================
+# In base/i18n/icu_util.cc:
+#   After ICU initialization, call:
+#     normal_browser::timezone::ApplyTimezoneAndLocale();

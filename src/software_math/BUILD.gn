@@ -1,0 +1,15 @@
+# Copyright 2024 Normal Browser Authors. All rights reserved.
+# Build configuration for the Software Math module (CPU-independent math).
+
+source_set("software_math") {
+  sources = [
+    "software_math.h",
+    "software_math.cc",
+  ]
+
+  deps = [
+    "//base",
+  ]
+
+  public_deps = [ "//base" ]
+}

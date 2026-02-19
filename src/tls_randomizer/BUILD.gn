@@ -1,0 +1,17 @@
+# Copyright 2024 Normal Browser Authors. All rights reserved.
+# Build configuration for the TLS Randomizer module (Cloudflare bypass).
+
+source_set("tls_randomizer") {
+  sources = [
+    "tls_randomizer.h",
+    "tls_randomizer.cc",
+  ]
+
+  deps = [
+    "//base",
+    "//crypto",
+    "//third_party/boringssl",
+  ]
+
+  public_deps = [ "//base" ]
+}

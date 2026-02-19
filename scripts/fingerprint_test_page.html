@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Normal Browser — Fingerprint Verification</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Roboto', sans-serif; background: #1a1a2e; color: #eee; padding: 16px; }
+    h1 { color: #00d4ff; font-size: 20px; margin-bottom: 16px; text-align: center; }
+    .section { background: #16213e; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+    .section h2 { color: #00d4ff; font-size: 14px; margin-bottom: 8px; border-bottom: 1px solid #0f3460; padding-bottom: 4px; }
+    .row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 12px; border-bottom: 1px solid #0a1628; }
+    .row:last-child { border-bottom: none; }
+    .label { color: #a0a0c0; flex: 0 0 45%; }
+    .value { color: #fff; flex: 0 0 53%; word-break: break-all; text-align: right; }
+    .pass { color: #00ff88; }
+    .fail { color: #ff4466; }
+    .warn { color: #ffaa00; }
+    #status { text-align: center; padding: 8px; font-size: 14px; margin-bottom: 12px; border-radius: 8px; }
+    .status-running { background: #0f3460; color: #00d4ff; }
+    .status-done { background: #003300; color: #00ff88; }
+    .hash { font-family: monospace; font-size: 10px; }
+    button { background: #00d4ff; color: #1a1a2e; border: none; padding: 12px 24px; border-radius: 8px; font-size: 14px; font-weight: bold; width: 100%; margin-top: 8px; cursor: pointer; }
+    button:active { background: #0099cc; }
+  </style>
+</head>
+<body>
+  <h1>🔍 Normal Browser Fingerprint Check</h1>
+  <div id="status" class="status-running">Running tests...</div>
+  <div id="results"></div>
+  <button onclick="location.reload()">🔄 Re-run Tests</button>
+
+  <script>
+    const R = document.getElementById('results');
+    const S = document.getElementById('status');
+    let passCount = 0, failCount = 0, warnCount = 0;
+
+    function section(title) {
+      const div = document.createElement('div');
+      div.className = 'section';
+      div.innerHTML = `<h2>${title}</h2>`;
+      R.appendChild(div);
+      return div;
+    }
+
+    function row(parent, label, value, status) {
+      const div = document.createElement('div');
+      div.className = 'row';
+      const cls = status === 'pass' ? 'pass' : status === 'fail' ? 'fail' : status === 'warn' ? 'warn' : '';
+      div.innerHTML = `<span class="label">${label}</span><span class="value ${cls}">${value}</span>`;
+      parent.appendChild(div);
+      if (status === 'pass') passCount++;
+      else if (status === 'fail') failCount++;
+      else if (status === 'warn') warnCount++;
+    }
+
+    function hashStr(s) { return `<span class="hash">${s}</span>`; }
+
+    async function runTests() {
+      // === Navigator ===
+      const nav = section('Navigator');
+      row(nav, 'userAgent', navigator.userAgent.substring(0, 60) + '...', 
+          navigator.userAgent.includes('Android') ? 'pass' : 'fail');
+      row(nav, 'platform', navigator.platform,
+          navigator.platform === 'Linux armv8l' ? 'pass' : 'fail');
+      row(nav, 'vendor', navigator.vendor,
+          navigator.vendor === 'Google Inc.' ? 'pass' : 'fail');
+      row(nav, 'productSub', navigator.productSub,
+          navigator.productSub === '20030107' ? 'pass' : 'fail');
+      row(nav, 'webdriver', String(navigator.webdriver),
+          navigator.webdriver === false ? 'pass' : 'fail');
+      row(nav, 'hardwareConcurrency', navigator.hardwareConcurrency,
+          navigator.hardwareConcurrency >= 2 && navigator.hardwareConcurrency <= 12 ? 'pass' : 'fail');
+      row(nav, 'deviceMemory', navigator.deviceMemory + ' GB',
+          [2,4,6,8,12,16].includes(navigator.deviceMemory) ? 'pass' : 'fail');
+      row(nav, 'maxTouchPoints', navigator.maxTouchPoints,
+          navigator.maxTouchPoints >= 1 ? 'pass' : 'fail');
+      row(nav, 'language', navigator.language, 'pass');
+      row(nav, 'languages', JSON.stringify(navigator.languages), 'pass');
+      row(nav, 'plugins.length', navigator.plugins.length,
+          navigator.plugins.length === 0 ? 'pass' : 'fail');
+      row(nav, 'pdfViewerEnabled', String(navigator.pdfViewerEnabled),
+          navigator.pdfViewerEnabled === false ? 'pass' : 'fail');
+
+      // === Screen ===
+      const scr = section('Screen');
+      row(scr, 'width × height', `${screen.width} × ${screen.height}`,
+          screen.width > 300 && screen.height > 500 ? 'pass' : 'fail');
+      row(scr, 'availWidth × availHeight', `${screen.availWidth} × ${screen.availHeight}`, 'pass');
+      row(scr, 'colorDepth', screen.colorDepth,
+          screen.colorDepth === 24 ? 'pass' : 'fail');
+      row(scr, 'pixelDepth', screen.pixelDepth,
+          screen.pixelDepth === 24 ? 'pass' : 'fail');
+      row(scr, 'devicePixelRatio', window.devicePixelRatio,
+          window.devicePixelRatio >= 1 && window.devicePixelRatio <= 4 ? 'pass' : 'fail');
+      row(scr, 'orientation.type', screen.orientation?.type || 'N/A',
+          screen.orientation?.type === 'portrait-primary' ? 'pass' : 'warn');
+
+      // === Timezone ===
+      const tz = section('Timezone & Locale');
+      const tzName = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      row(tz, 'timeZone', tzName, tzName === 'Asia/Kolkata' ? 'pass' : 'fail');
+      row(tz, 'getTimezoneOffset()', new Date().getTimezoneOffset(),
+          new Date().getTimezoneOffset() === -330 ? 'pass' : 'fail');
+      row(tz, 'locale', Intl.DateTimeFormat().resolvedOptions().locale, 'pass');
+
+      // === Canvas ===
+      const canv = section('Canvas Fingerprint');
+      const c = document.createElement('canvas');
+      c.width = 280; c.height = 60;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#f60';
+      ctx.fillRect(0, 0, 280, 60);
+      ctx.fillStyle = '#069';
+      ctx.font = 'bold 14px Arial';
+      ctx.fillText('Normal Browser Canvas Test 🎨', 2, 20);
+      ctx.fillStyle = 'rgba(102, 204, 0, 0.7)';
+      ctx.font = '12px Times New Roman';
+      ctx.fillText('Anti-fingerprint layer active', 4, 40);
+      const dataUrl = c.toDataURL();
+      const canvasHash = await crypto.subtle.digest('SHA-256',
+          new TextEncoder().encode(dataUrl));
+      const hashHex = Array.from(new Uint8Array(canvasHash))
+          .map(b => b.toString(16).padStart(2, '0')).join('');
+      row(canv, 'Hash (SHA-256)', hashStr(hashHex.substring(0, 32) + '...'), 'pass');
+      row(canv, 'DataURL length', dataUrl.length, dataUrl.length > 100 ? 'pass' : 'fail');
+
+      // === WebGL ===
+      const wgl = section('WebGL');
+      const gl = document.createElement('canvas').getContext('webgl');
+      if (gl) {
+        const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+        const renderer = dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+        const vendor = dbg ? gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL) : gl.getParameter(gl.VENDOR);
+        row(wgl, 'Renderer', renderer, renderer ? 'pass' : 'fail');
+        row(wgl, 'Vendor', vendor, vendor ? 'pass' : 'fail');
+        row(wgl, 'Version', gl.getParameter(gl.VERSION), 'pass');
+        row(wgl, 'Max Texture Size', gl.getParameter(gl.MAX_TEXTURE_SIZE), 'pass');
+        const exts = gl.getSupportedExtensions();
+        row(wgl, 'Extensions count', exts ? exts.length : 0, exts && exts.length > 10 ? 'pass' : 'warn');
+      } else {
+        row(wgl, 'Status', 'Not available', 'warn');
+      }
+
+      // === Audio ===
+      const aud = section('Audio Fingerprint');
+      try {
+        const ac = new (window.AudioContext || window.webkitAudioContext)();
+        row(aud, 'sampleRate', ac.sampleRate,
+            [44100, 48000].includes(ac.sampleRate) ? 'pass' : 'warn');
+        row(aud, 'baseLatency', ac.baseLatency?.toFixed(6) || 'N/A', 'pass');
+
+        // Quick audio fingerprint
+        const osc = ac.createOscillator();
+        const comp = ac.createDynamicsCompressor();
+        osc.type = 'triangle';
+        osc.frequency.value = 10000;
+        comp.threshold.value = -50;
+        comp.knee.value = 40;
+        comp.ratio.value = 12;
+        comp.attack.value = 0;
+        comp.release.value = 0.25;
+        osc.connect(comp);
+        comp.connect(ac.destination);
+        osc.start(0);
+        osc.stop(ac.currentTime + 0.01);
+
+        row(aud, 'AudioContext', 'Available', 'pass');
+        ac.close();
+      } catch(e) {
+        row(aud, 'Error', e.message, 'fail');
+      }
+
+      // === Math ===
+      const math = section('Math Fingerprint');
+      const tanVal = Math.tan(-1e300);
+      const atan2Val = Math.atan2(1, 2);
+      const expm1Val = Math.expm1(1);
+      const log1pVal = Math.log1p(0.5);
+      const cbrtVal = Math.cbrt(2);
+      row(math, 'tan(-1e300)', tanVal, 'pass');
+      row(math, 'atan2(1,2)', atan2Val, 'pass');
+      row(math, 'expm1(1)', expm1Val, 'pass');
+      row(math, 'log1p(0.5)', log1pVal, 'pass');
+      row(math, 'cbrt(2)', cbrtVal, 'pass');
+
+      // Verify determinism
+      const tanVal2 = Math.tan(-1e300);
+      row(math, 'Deterministic?', tanVal === tanVal2 ? 'Yes' : 'No',
+          tanVal === tanVal2 ? 'pass' : 'fail');
+
+      // === CSS Media Queries ===
+      const css = section('CSS Media Queries');
+      row(css, 'hover', matchMedia('(hover: none)').matches ? 'none' : 'hover',
+          matchMedia('(hover: none)').matches ? 'pass' : 'fail');
+      row(css, 'pointer', matchMedia('(pointer: coarse)').matches ? 'coarse' : 'fine',
+          matchMedia('(pointer: coarse)').matches ? 'pass' : 'fail');
+      row(css, 'prefers-color-scheme',
+          matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light', 'pass');
+      row(css, 'color-gamut: srgb', String(matchMedia('(color-gamut: srgb)').matches), 'pass');
+
+      // === Bot Markers ===
+      const bot = section('Anti-Bot Markers');
+      const markers = ['__selenium_unwrapped','__webdriver_evaluate','__nightmare',
+                        '_phantom','domAutomation','domAutomationController'];
+      let allClean = true;
+      for (const m of markers) {
+        if (m in window) {
+          row(bot, m, 'FOUND', 'fail');
+          allClean = false;
+        }
+      }
+      if (allClean) row(bot, 'Automation globals', 'All absent ✓', 'pass');
+      row(bot, 'window.chrome', typeof window.chrome === 'object' ? 'exists ✓' : 'missing',
+          typeof window.chrome === 'object' ? 'pass' : 'fail');
+      row(bot, 'ontouchstart', 'ontouchstart' in window ? 'exists ✓' : 'missing',
+          'ontouchstart' in window ? 'pass' : 'fail');
+
+      // === Storage ===
+      const stor = section('Storage & Memory');
+      try {
+        const est = await navigator.storage.estimate();
+        row(stor, 'storage.quota', (est.quota / 1e9).toFixed(1) + ' GB', 'pass');
+        row(stor, 'storage.usage', (est.usage / 1e6).toFixed(1) + ' MB', 'pass');
+      } catch(e) {
+        row(stor, 'storage', e.message, 'warn');
+      }
+
+      if (performance.memory) {
+        row(stor, 'jsHeapSizeLimit', (performance.memory.jsHeapSizeLimit / 1e9).toFixed(2) + ' GB', 'pass');
+      }
+
+      // === Network Info ===
+      if (navigator.connection) {
+        const net = section('Network Info');
+        row(net, 'effectiveType', navigator.connection.effectiveType, 'pass');
+        row(net, 'downlink', navigator.connection.downlink + ' Mbps', 'pass');
+        row(net, 'rtt', navigator.connection.rtt + ' ms', 'pass');
+      }
+
+      // === Summary ===
+      S.className = 'status-done';
+      S.textContent = `✓ ${passCount} passed | ✗ ${failCount} failed | ⚠ ${warnCount} warnings`;
+    }
+
+    runTests();
+  </script>
+</body>
+</html>

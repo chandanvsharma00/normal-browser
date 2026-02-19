@@ -1,0 +1,142 @@
+// Copyright 2024 Normal Browser Authors. All rights reserved.
+// ghost_profile.mojom — Mojo IPC interface for passing device profile
+// from the browser process to sandboxed renderer processes.
+//
+// File location in Chromium tree: content/common/ghost_profile.mojom
+//
+// Field names are aligned with DeviceProfile (device_profile.h) and
+// RendererProfile (ghost_profile_client.h). The ghost_profile_host.cc
+// maps DeviceProfile → this Mojo struct, and ghost_profile_client.cc
+// copies this → RendererProfile.
+
+module content.mojom;
+
+struct GhostDeviceProfile {
+  // === Identity ===
+  string manufacturer;          // "Samsung", "Xiaomi", etc.
+  string model;                 // "SM-S928B", "23127PN0CG", etc.
+  string device_name;           // "Galaxy S24 Ultra", etc.
+  string build_fingerprint;     // android.os.Build.FINGERPRINT
+  string build_display;         // android.os.Build.DISPLAY
+  string build_id;              // android.os.Build.ID
+  int32 android_version;        // 14
+  int32 sdk_version;            // 34
+  string security_patch;        // "2024-09-01"
+  string android_id;            // 16-char hex
+  string serial_number;         // "unknown" on Android 10+
+
+  // === User-Agent & Client Hints ===
+  string user_agent;
+  string ch_ua;                       // Sec-CH-UA header value
+  string ch_ua_model;                 // Sec-CH-UA-Model
+  string ch_ua_platform_version;      // Sec-CH-UA-Platform-Version
+  string ch_ua_full_version_list;     // Sec-CH-UA-Full-Version-List
+
+  // === Hardware ===
+  int32 cpu_cores;
+  string hardware_string;       // ro.hardware
+  string soc_name;              // Display name: "Snapdragon 8 Gen 3"
+  int32 soc_tier;               // 0=flagship, 1=upper-mid, 2=mid, 3=budget
+  int32 ram_mb;
+  float device_memory_gb;       // navigator.deviceMemory (2/4/8)
+
+  // === Screen ===
+  int32 screen_width;
+  int32 screen_height;
+  float density;                // window.devicePixelRatio
+  int32 dpi;                    // DisplayMetrics.densityDpi
+
+  // === GPU / WebGL ===
+  string gl_renderer;
+  string gl_vendor;
+  string gl_version;
+  string gl_shading_language_version;
+  array<string> gl_extensions;
+  int32 gl_max_texture_size;
+  int32 gl_max_renderbuffer_size;
+  array<int32> gl_max_viewport_dims;          // [width, height]
+  int32 gl_max_combined_texture_units;
+  int32 gl_max_vertex_attribs;
+  int32 gl_max_varying_vectors;
+  array<float> gl_aliased_point_size;         // [min, max]
+  array<float> gl_aliased_line_width;         // [min, max]
+
+  // === Audio ===
+  int32 audio_sample_rate;      // Derived from SoC preferred_sample_rate
+  int32 audio_buffer_size;      // Derived from SoC preferred_buffer_size
+
+  // === Fingerprint Seeds (per-session unique) ===
+  float canvas_noise_seed;
+  float audio_context_seed;     // Maps from DeviceProfile.audio_bias
+  float webgl_noise_seed;
+  float client_rect_noise_seed;
+  float sensor_noise_seed;
+  uint64 math_seed;
+
+  // === Language ===
+  string primary_language;      // "en-IN"
+  array<string> languages;      // ["en-IN", "en", "hi"]
+
+  // === Camera ===
+  int32 front_cameras;
+  int32 back_cameras;
+
+  // === Battery ===
+  float battery_level;
+  bool battery_charging;
+
+  // === Network ===
+  string connection_type;       // "wifi" or "4g"
+  double network_downlink_mbps;
+  uint32 network_rtt_ms;
+  string effective_type;        // "4g" or "3g"
+
+  // === Storage & Memory ===
+  int64 storage_total_bytes;
+  int64 storage_used_bytes;
+  int64 js_heap_size_limit;
+  int64 total_js_heap_size;
+  int64 used_js_heap_size;
+
+  // === Fonts ===
+  array<string> system_fonts;   // Maps from DeviceProfile.system_fonts
+  string system_ui_font;        // Maps from DeviceProfile.system_ui_font
+  string emoji_font_name;       // Maps from DeviceProfile.emoji_font_name
+
+  // === Sensors ===
+  string accelerometer_name;
+  string accelerometer_vendor;
+  string gyroscope_name;
+  string gyroscope_vendor;
+  string magnetometer_name;
+  string magnetometer_vendor;
+  bool has_gyroscope;
+  bool has_barometer;
+
+  // === TTS Voices ===
+  array<string> tts_voices;     // Flattened from VoiceInfo: "name|lang"
+
+  // === WebGPU ===
+  bool supports_webgpu;
+  string webgpu_vendor;
+  string webgpu_arch;           // Maps from DeviceProfile.webgpu_arch
+  string webgpu_device;
+  string webgpu_description;
+
+  // === CSS ===
+  bool prefers_dark_mode;
+  bool supports_p3_gamut;
+
+  // === WebRTC ===
+  string fake_local_ip;         // Maps from DeviceProfile.fake_local_ip
+};
+
+// Interface implemented by the browser process.
+// Each renderer requests the current profile once on startup.
+interface GhostProfileProvider {
+  // Get the current device profile.
+  GetProfile() => (GhostDeviceProfile profile);
+
+  // Notify browser that renderer is ready (for sequencing).
+  RendererReady();
+};

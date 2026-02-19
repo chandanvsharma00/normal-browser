@@ -1,0 +1,49 @@
+# Copyright 2024 Normal Browser Authors. All rights reserved.
+# Build configuration for the Device Profile Generator module.
+
+source_set("device_profile_generator") {
+  sources = [
+    "device_profile.h",
+    "device_profile.cc",
+    "manufacturer_traits.h",
+    "manufacturer_traits.cc",
+    "gpu_database.h",
+    "gpu_database.cc",
+    "model_name_generator.h",
+    "model_name_generator.cc",
+    "build_fingerprint_generator.h",
+    "build_fingerprint_generator.cc",
+    "profile_validator.h",
+    "profile_validator.cc",
+    "profile_generator.h",
+    "profile_generator.cc",
+    "profile_store.h",
+    "profile_store.cc",
+  ]
+
+  deps = [
+    "//base",
+    "//base:base_static",
+    "//crypto",
+  ]
+
+  if (is_android) {
+    deps += [ "//base:jni_java" ]
+  }
+
+  public_deps = [ "//base" ]
+}
+
+source_set("device_profile_generator_tests") {
+  testonly = true
+  sources = [
+    "profile_generator_unittest.cc",
+    "profile_validator_unittest.cc",
+    "model_name_generator_unittest.cc",
+  ]
+  deps = [
+    ":device_profile_generator",
+    "//base/test:test_support",
+    "//testing/gtest",
+  ]
+}
