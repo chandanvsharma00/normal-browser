@@ -111,8 +111,7 @@ do_patch() {
   # Run the patch application script
   bash "$SCRIPT_DIR/apply_patches.sh" "$CHROMIUM_SRC"
 
-  log_info "Patches applied! Manual source edits still required."
-  log_info "See patch files for inline instructions."
+  log_info "Patches applied successfully (files copied + hooks + BUILD.gn)."
 }
 
 # ====================================================================

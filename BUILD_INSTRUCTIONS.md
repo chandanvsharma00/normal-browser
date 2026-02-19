@@ -101,7 +101,7 @@ bash ../normal-browser-patches/apply_patches.sh
 
 ### What `apply_patches.sh` Does
 
-The script copies our source files into the correct locations within the Chromium tree and patches existing Chromium files to hook our code in. Here's the mapping:
+The script copies our source files into the correct locations within the Chromium tree, applies hook-point patches to existing Chromium source files, and updates BUILD.gn files. Here's the mapping:
 
 #### A. New Files (copied into Chromium tree)
 
@@ -142,9 +142,11 @@ The script copies our source files into the correct locations within the Chromiu
 | `src/chromium_patches/android/native/ghost_mode_jni_bridge.cc` | `chrome/browser/ghost/android/ghost_mode_jni_bridge.cc` |
 | `src/chromium_patches/android/java/org/nicebrowser/ghost/*.java` | `chrome/android/java/src/org/nicebrowser/ghost/` |
 
-#### B. Existing Chromium Files to Patch (hook points)
+#### B. Existing Chromium Files to Patch (hook points — automated)
 
-These are the minimal edits to existing Chromium source files to call our code:
+These are the minimal edits to existing Chromium source files to call our code.
+These patches are now **automatically applied** by `patches/chromium_hook_patches.sh`
+(called from `apply_patches.sh`). The script is idempotent — safe to run multiple times.
 
 **1. Navigator — `third_party/blink/renderer/core/frame/navigator.cc`**
 ```cpp
@@ -211,7 +213,12 @@ These are the minimal edits to existing Chromium source files to call our code:
 
 ---
 
-## Step 4: Update BUILD.gn Files
+## Step 4: Update BUILD.gn Files (automated)
+
+BUILD.gn modifications are now **automatically applied** by `patches/build_gn_patches.sh`
+(called from `apply_patches.sh`). The script is idempotent — safe to run multiple times.
+
+Below is a reference of what the script modifies:
 
 ### A. `components/device_profile_generator/BUILD.gn`
 Already provided in `src/device_profile_generator/BUILD.gn`. Copy it.
