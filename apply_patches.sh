@@ -188,12 +188,48 @@ done
 
 echo ""
 echo "============================================="
-echo " Patch application complete!"
+echo " File copy complete!"
 echo ""
 echo " Files copied: $(find "$SRC_DIR" -type f \( -name '*.h' -o -name '*.cc' -o -name '*.java' -o -name '*.mojom' \) | wc -l)"
+echo "============================================="
+
+# ============================================================
+# Step 10: Apply hook-point patches to existing Chromium files
+# ============================================================
+echo ""
+echo ">>> Step 10: Applying hook-point patches to existing Chromium files..."
+echo ""
+
+PATCHES_DIR="$SCRIPT_DIR/patches"
+
+if [[ -f "$PATCHES_DIR/chromium_hook_patches.sh" ]]; then
+    bash "$PATCHES_DIR/chromium_hook_patches.sh"
+else
+    echo "WARNING: chromium_hook_patches.sh not found at $PATCHES_DIR"
+    echo "         Hook-point patches must be applied manually."
+    echo "         See BUILD_INSTRUCTIONS.md Step 3.B"
+fi
+
+# ============================================================
+# Step 11: Apply BUILD.gn patches
+# ============================================================
+echo ""
+echo ">>> Step 11: Applying BUILD.gn patches..."
+echo ""
+
+if [[ -f "$PATCHES_DIR/build_gn_patches.sh" ]]; then
+    bash "$PATCHES_DIR/build_gn_patches.sh"
+else
+    echo "WARNING: build_gn_patches.sh not found at $PATCHES_DIR"
+    echo "         BUILD.gn modifications must be applied manually."
+    echo "         See BUILD_INSTRUCTIONS.md Step 4"
+fi
+
+echo ""
+echo "============================================="
+echo " All patches applied!"
 echo ""
 echo " NEXT STEPS:"
-echo "   1. Apply BUILD.gn modifications (see BUILD_INSTRUCTIONS.md Step 4)"
-echo "   2. Apply hook-point patches to existing Chromium files (see BUILD_INSTRUCTIONS.md Step 3.B)"
-echo "   3. Run: autoninja -C out/Release chrome_public_apk"
+echo "   1. Run: gn gen out/Release --args='...'"
+echo "   2. Run: autoninja -C out/Release chrome_public_apk"
 echo "============================================="

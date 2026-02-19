@@ -148,12 +148,37 @@ cp -v "$PATCH_SRC/chromium_patches/android/native/"*.cc \
       "$ANDROID_PATCH_DIR/native/"
 
 echo ""
-echo "=== All patches copied successfully! ==="
+echo "=== All patch files copied successfully! ==="
+echo ""
+
+# ====================================================================
+# Step 7: Apply hook-point patches to existing Chromium files
+# ====================================================================
+echo "[Hook Points] Applying hook-point patches to existing Chromium files..."
+
+PATCHES_DIR="$SCRIPT_DIR/../patches"
+
+if [[ -f "$PATCHES_DIR/chromium_hook_patches.sh" ]]; then
+    (cd "$CHROMIUM_SRC" && bash "$PATCHES_DIR/chromium_hook_patches.sh")
+else
+    echo "WARNING: chromium_hook_patches.sh not found at $PATCHES_DIR"
+    echo "         Hook-point patches must be applied manually."
+fi
+
+# ====================================================================
+# Step 8: Apply BUILD.gn patches
+# ====================================================================
+echo "[BUILD.gn] Applying BUILD.gn modifications..."
+
+if [[ -f "$PATCHES_DIR/build_gn_patches.sh" ]]; then
+    (cd "$CHROMIUM_SRC" && bash "$PATCHES_DIR/build_gn_patches.sh")
+else
+    echo "WARNING: build_gn_patches.sh not found at $PATCHES_DIR"
+    echo "         BUILD.gn modifications must be applied manually."
+fi
+
 echo ""
 echo "NEXT STEPS:"
-echo "  1. Apply source-level edits to existing Chromium files"
-echo "     (see each patch file's header for exact files to modify)"
-echo "  2. Update BUILD.gn files to include new source files"
-echo "  3. Run: gn gen out/Android --args='...'"
-echo "  4. Run: autoninja -C out/Android chrome_public_apk"
+echo "  1. Run: gn gen out/Android --args='...'"
+echo "  2. Run: autoninja -C out/Android chrome_public_apk"
 echo ""
