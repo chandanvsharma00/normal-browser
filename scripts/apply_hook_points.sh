@@ -180,16 +180,26 @@ CANVAS_CTX="$CHROMIUM_SRC/third_party/blink/renderer/modules/canvas/canvas2d/can
 add_include "$CANVAS_CTX" '#include "third_party/blink/renderer/modules/canvas/canvas2d/canvas_spoofing.cc"'
 
 # ====================================================================
-# HOOK 7: WebGL parameter spoofing
+# HOOK 7: WebGL parameter + extension spoofing
 # ====================================================================
-echo "[7/12] WebGL getParameter/getExtensions hooks..."
+echo "[7/14] WebGL getParameter/getExtensions/getSupportedExtensions hooks..."
 WEBGL_CTX="$CHROMIUM_SRC/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc"
 add_include "$WEBGL_CTX" '#include "third_party/blink/renderer/modules/webgl/webgl_spoofing.cc"'
+
+# Hook getSupportedExtensions() to return spoofed extension list
+insert_before "$WEBGL_CTX" \
+  "return result;" \
+  "  // Normal Browser: override WebGL extension list\\n  auto spoofed_exts = blink::webgl_spoofing::GetSpoofedWebGLExtensions();\\n  if (spoofed_exts.has_value()) return spoofed_exts.value();"
+
+# Hook getExtension() to filter by spoofed profile
+insert_after "$WEBGL_CTX" \
+  "getExtension.*ScriptState" \
+  "  // Normal Browser: block extensions not in spoofed profile\\n  if (!blink::webgl_spoofing::ShouldEnableWebGLExtension(name)) return nullptr;"
 
 # ====================================================================
 # HOOK 8: Audio context spoofing
 # ====================================================================
-echo "[8/12] AudioContext/OfflineAudioContext hooks..."
+echo "[8/14] AudioContext/OfflineAudioContext hooks..."
 AUDIO_CTX="$CHROMIUM_SRC/third_party/blink/renderer/modules/webaudio/audio_context.cc"
 add_include "$AUDIO_CTX" '#include "third_party/blink/renderer/modules/webaudio/audio_spoofing.cc"'
 
@@ -201,7 +211,7 @@ fi
 # ====================================================================
 # HOOK 9: V8 Math builtins → FDLIBM replacements
 # ====================================================================
-echo "[9/12] V8 Math builtins override..."
+echo "[9/14] V8 Math builtins override..."
 V8_MATH="$CHROMIUM_SRC/v8/src/builtins/builtins-math-gen.cc"
 add_include "$V8_MATH" '#include "v8/src/builtins/v8_math_patch.h"'
 # Also patch the external references for transcendental functions
@@ -216,7 +226,7 @@ fi
 # ====================================================================
 # HOOK 10: BoringSSL TLS randomization
 # ====================================================================
-echo "[10/12] BoringSSL ClientHello randomization..."
+echo "[10/14] BoringSSL ClientHello randomization..."
 HANDSHAKE="$CHROMIUM_SRC/third_party/boringssl/src/ssl/handshake_client.cc"
 add_include "$HANDSHAKE" '#include "third_party/boringssl/src/ssl/boringssl_tls_patch.h"'
 echo "  NOTE: You must manually call normal_browser::tls::ApplyTLSRandomization(ssl)"
@@ -225,7 +235,7 @@ echo "        before ssl_write_client_hello() in handshake_client.cc"
 # ====================================================================
 # HOOK 11: HTTP Header / Client Hints spoofing
 # ====================================================================
-echo "[11/12] HTTP header and Client Hints overrides..."
+echo "[11/14] HTTP header and Client Hints overrides..."
 HTTP_HEADERS="$CHROMIUM_SRC/net/http/http_request_headers.cc"
 if [ -f "$HTTP_HEADERS" ]; then
   add_include "$HTTP_HEADERS" '#include "net/http/http_header_patch.h"'
@@ -242,10 +252,49 @@ fi
 # ====================================================================
 # HOOK 12: Timezone/Locale after ICU init
 # ====================================================================
-echo "[12/12] Timezone and locale override..."
+echo "[12/14] Timezone and locale override..."
 ICU_UTIL="$CHROMIUM_SRC/base/i18n/icu_util.cc"
 if [ -f "$ICU_UTIL" ]; then
   add_include "$ICU_UTIL" '#include "base/i18n/timezone_locale_patch.cc"'
+fi
+
+# ====================================================================
+# HOOK 13: DOMRect/ClientRect noise (emoji + layout fingerprinting)
+# ====================================================================
+echo "[13/14] DOMRect getBoundingClientRect noise..."
+ELEMENT_CC="$CHROMIUM_SRC/third_party/blink/renderer/core/dom/element.cc"
+add_include "$ELEMENT_CC" '#include "third_party/blink/renderer/core/dom/domrect_spoofing.cc"'
+# Hook into getBoundingClientRect — insert noise call after rect computation
+insert_before "$ELEMENT_CC" \
+  "return DOMRect::Create" \
+  "  // Normal Browser: apply per-session DOMRect noise for fingerprint variation\\n  {\\n    double nx = rect.x(), ny = rect.y(), nw = rect.width(), nh = rect.height();\\n    blink::domrect_spoofing::ApplyDOMRectNoise(nx, ny, nw, nh);\\n  }"
+
+RANGE_CC="$CHROMIUM_SRC/third_party/blink/renderer/core/dom/range.cc"
+if [ -f "$RANGE_CC" ]; then
+  add_include "$RANGE_CC" '#include "third_party/blink/renderer/core/dom/domrect_spoofing.cc"'
+fi
+
+# ====================================================================
+# HOOK 14: Font family blocking (prevents FPJS font detection)
+# ====================================================================
+echo "[14/14] Font family blocking for fingerprint prevention..."
+FONT_CACHE="$CHROMIUM_SRC/third_party/blink/renderer/platform/fonts/font_cache_android.cc"
+if [ -f "$FONT_CACHE" ]; then
+  add_include "$FONT_CACHE" '#include "third_party/
+echo "  4. Font blocking — in FontCache::GetFontPlatformData(), add:"
+echo "     if (blink::ShouldBlockFontFamily(family_name.Utf8())) return nullptr;"
+echo "  5. DOMRect noise — in Element::getBoundingClientRect(), call"
+echo "     blink::domrect_spoofing::ApplyDOMRectNoise() on the result rect."
+echo "  6. WebGL extensions — in getSupportedExtensions(), call"
+echo "     blink::webgl_spoofing::GetSpoofedWebGLExtensions() and return if set."blink/renderer/platform/fonts/font_spoofing.cc"'
+  echo "  NOTE: In FontCache::GetFontPlatformData(), add BEFORE font lookup:"
+  echo "    if (blink::ShouldBlockFontFamily(family_name.Utf8()))"
+  echo "      return nullptr;"
+fi
+
+FONT_FALLBACK="$CHROMIUM_SRC/third_party/blink/renderer/platform/fonts/font_fallback_list.cc"
+if [ -f "$FONT_FALLBACK" ]; then
+  add_include "$FONT_FALLBACK" '#include "third_party/blink/renderer/platform/fonts/font_spoofing.cc"'
 fi
 
 echo ""

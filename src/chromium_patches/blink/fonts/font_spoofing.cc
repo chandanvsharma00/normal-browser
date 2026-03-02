@@ -3,15 +3,33 @@
 //
 // FILES TO MODIFY:
 //   third_party/blink/renderer/platform/fonts/font_cache_android.cc
-//   third_party/blink/renderer/platform/fonts/font_fallback_list.cc
-//   third_party/blink/renderer/platform/fonts/font_platform_data.cc
-//   third_party/skia/src/ports/SkFontMgr_android.cpp
+//     → #include this file
+//     → In FontCache::GetFontPlatformData(), BEFORE the font lookup:
+//         if (blink::ShouldBlockFontFamily(family_name.Utf8()))
+//           return nullptr;  // Force fallback
 //
-// STRATEGY:
-//   1. Filter font enumeration to only return fonts matching the
-//      claimed manufacturer (Samsung fonts for Samsung, etc.).
-//   2. Override the system emoji font path based on manufacturer.
-//   3. Add sub-pixel font metric noise for canvas fingerprinting.
+//   third_party/blink/renderer/platform/fonts/font_fallback_list.cc
+//     → #include this file
+//     → In DeterminePrimarySimpleFontData(), after getting family name:
+//         if (blink::ShouldBlockFontFamily(family.Utf8()))
+//           return GetLastResortFallbackFont();  // Use fallback
+//
+//   third_party/skia/src/ports/SkFontMgr_android.cpp
+//     → In onMatchFamilyStyle(), check ShouldBlockFontFamily() first
+//
+// WHY THIS IS CRITICAL:
+//   FPJS detects fonts by RENDERING test strings (not enumeration API).
+//   It sets CSS font-family to a probe font + fallback, measures
+//   the rendered text width, and compares. If widths differ, the font
+//   exists. To prevent detection of fonts we don't want to expose,
+//   we must block them at the FONT MATCHING level so they fall back
+//   to the default font → same width → FPJS thinks font doesn't exist.
+//
+//   The FPJS log showed `"fonts": ["sans-serif-thin"]` because this
+//   was the only font that rendered differently from fallback. All
+//   other fonts either don't exist on the device or were already
+//   matching the fallback width. Blocking `sans-serif-thin` eliminates
+//   this fingerprint signal.
 
 #include "third_party/blink/renderer/core/ghost_profile_client.h"
 
@@ -108,20 +126,59 @@ const std::vector<std::string> kGoogleFonts = {
     "ComingSoon",
 };
 
-// Stock Android fonts (Motorola, Realme, OPPO, Vivo, Tecno, iQOO, Nothing)
-// These OEMs use near-stock Android with no custom system fonts.
-const std::vector<std::string> kStockFonts = {
-    // No OEM-specific additions — just the common set
+// Fonts that MUST be blocked because they leak device identity.
+// These exist on real Android devices but should not be detectable
+// because they create a constant fingerprint across all profiles.
+const std::vector<std::string> kBlockedFonts = {
+    "sans-serif-thin",        // Android-specific, FPJS probes this
+    "sans-serif-light",       // Android-specific weight variant
+    "sans-serif-medium",      // Android-specific weight variant
+    "sans-serif-black",       // Android-specific weight variant
+    "sans-serif-condensed",   // Android-specific condensed variant
+    "sans-serif-smallcaps",   // Android-specific variant
+    "serif-monospace",        // Android system alias
+    "casual",                 // Android system alias
+    "elegant",                // Android-specific alias
 };
+
+// Generic CSS families that must always resolve (never block)
+const std::unordered_set<std::string> kGenericFamilies = {
+    "serif", "sans-serif", "monospace", "cursive", "fantasy",
+    "system-ui", "math", "emoji", "fangsong",
+};
+
+// Build the allowed font set for the current profile
+void BuildAllowedFontCache(std::unordered_set<std::string>& cache,
+                           const std::string& manufacturer) {
+  cache.clear();
+
+  // Add common fonts
+  for (const auto& f : kCommonFonts) {
+    cache.insert(f);
+  }
+
+  // Add generic families
+  for (const auto& f : kGenericFamilies) {
+    cache.insert(f);
+  }
+
+  // Add manufacturer-specific fonts
+  if (manufacturer == "Samsung") {
+    for (const auto& f : kSamsungFonts) cache.insert(f);
+  } else if (manufacturer == "Xiaomi" || manufacturer == "Redmi" ||
+             manufacturer == "POCO") {
+    for (const auto& f : kXiaomiFonts) cache.insert(f);
+  } else if (manufacturer == "OnePlus") {
+    for (const auto& f : kOnePlusFonts) cache.insert(f);
+  } else if (manufacturer == "Google") {
+    for (const auto& f : kGoogleFonts) cache.insert(f);
+  }
+}
 
 }  // namespace
 
 // ====================================================================
 // GetSpoofedFontList — Returns manufacturer-appropriate font set
-// File: third_party/blink/renderer/platform/fonts/font_cache_android.cc
-//
-// Called when JavaScript tries to enumerate fonts (CSS font-face
-// loading, canvas text rendering, etc.)
 // ====================================================================
 std::vector<std::string> GetSpoofedFontList() {
   auto* client = normal_browser::GhostProfileClient::Get();
@@ -130,7 +187,6 @@ std::vector<std::string> GetSpoofedFontList() {
   const auto& p = client->GetProfile();
   std::vector<std::string> fonts = kCommonFonts;
 
-  // Add manufacturer-specific fonts
   if (p.manufacturer == "Samsung") {
     fonts.insert(fonts.end(), kSamsungFonts.begin(), kSamsungFonts.end());
   } else if (p.manufacturer == "Xiaomi" ||
@@ -142,61 +198,68 @@ std::vector<std::string> GetSpoofedFontList() {
   } else if (p.manufacturer == "Google") {
     fonts.insert(fonts.end(), kGoogleFonts.begin(), kGoogleFonts.end());
   }
-  // Motorola, Realme, OPPO, Vivo, Tecno, iQOO, Nothing → just common fonts
 
   return fonts;
 }
 
 // ====================================================================
-// IsFontAvailable — Check if a specific font "exists" on the device
+// ShouldBlockFontFamily — THE PRIMARY HOOK FUNCTION
 //
-// Called from font matching / CSS @font-face resolution.
-// Only returns true for fonts in the profile's allowed list.
+// This is the main function that MUST be called from the font matching
+// path. When it returns true, the font matcher should skip this family
+// and use the fallback instead.
 //
-// CRITICAL FIX (2026-03-02):
-// Previously this only filtered font ENUMERATION APIs. But FPJS
-// detects fonts by rendering test strings with each font family and
-// measuring pixel width differences — bypassing enumeration entirely.
-// For example, FPJS renders "mmmmmmmmmmlli" in both "sans-serif-thin"
-// and "sans-serif" and compares widths. If they differ, the font exists.
+// HOOK POINT (font_cache_android.cc):
+//   const SimpleFontData* FontCache::GetFontPlatformData(...) {
+//     // --- Normal Browser: block non-profile fonts ---
+//     if (blink::ShouldBlockFontFamily(
+//             description.Family().FamilyName().Utf8())) {
+//       return nullptr;
+//     }
+//     // --- original code continues ---
+//   }
 //
-// This MUST also be called from the font MATCHING/FALLBACK path:
-//   third_party/blink/renderer/platform/fonts/font_fallback_list.cc
-//   third_party/blink/renderer/platform/fonts/font_selector.cc
-//
-// When IsFontAvailableForProfile() returns false, the font matching
-// system should treat the font as unavailable and fall back to the
-// default family. This prevents detection via rendering measurement.
+// This prevents FPJS from detecting fonts via rendering measurement.
 // ====================================================================
-bool IsFontAvailableForProfile(const std::string& font_family) {
+bool ShouldBlockFontFamily(const std::string& font_family) {
+  // Never block empty names
+  if (font_family.empty()) return false;
+
+  // Never block generic CSS families
+  if (kGenericFamilies.count(font_family) > 0) return false;
+
+  // Always block known fingerprint-leaking fonts
+  for (const auto& blocked : kBlockedFonts) {
+    if (font_family == blocked) return true;
+  }
+
+  // Check against profile's allowed list
+  auto* client = normal_browser::GhostProfileClient::Get();
+  if (!client || !client->IsReady()) return false;  // Allow all if no profile
+
   static std::unordered_set<std::string> allowed_cache;
   static std::string cached_manufacturer;
 
-  auto* client = normal_browser::GhostProfileClient::Get();
-  if (!client || !client->IsReady()) return true;  // Allow all if no profile
-
   const auto& p = client->GetProfile();
 
-  // Rebuild cache if manufacturer changed (session rotation)
   if (cached_manufacturer != p.manufacturer) {
-    allowed_cache.clear();
-    auto fonts = GetSpoofedFontList();
-    for (const auto& f : fonts) {
-      allowed_cache.insert(f);
-    }
-    // Also add generic family names that must always be available
-    allowed_cache.insert("serif");
-    allowed_cache.insert("sans-serif");
-    allowed_cache.insert("monospace");
-    allowed_cache.insert("cursive");
-    allowed_cache.insert("fantasy");
-    allowed_cache.insert("system-ui");
-    // Do NOT add "sans-serif-thin" — it's an Android-specific font that
-    // leaks as a fingerprint signal. FPJS specifically probes for it.
+    BuildAllowedFontCache(allowed_cache, p.manufacturer);
     cached_manufacturer = p.manufacturer;
   }
 
-  return allowed_cache.count(font_family) > 0;
+  // If the font is in our allowed list, don't block
+  if (allowed_cache.count(font_family) > 0) return false;
+
+  // Font not in allowed list → block it (force fallback)
+  return true;
+}
+
+// ====================================================================
+// IsFontAvailableForProfile — legacy API, wraps ShouldBlockFontFamily
+// Returns true if font should be available, false if blocked.
+// ====================================================================
+bool IsFontAvailableForProfile(const std::string& font_family) {
+  return !ShouldBlockFontFamily(font_family);
 }
 
 // ====================================================================
