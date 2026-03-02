@@ -152,6 +152,21 @@ std::vector<std::string> GetSpoofedFontList() {
 //
 // Called from font matching / CSS @font-face resolution.
 // Only returns true for fonts in the profile's allowed list.
+//
+// CRITICAL FIX (2026-03-02):
+// Previously this only filtered font ENUMERATION APIs. But FPJS
+// detects fonts by rendering test strings with each font family and
+// measuring pixel width differences — bypassing enumeration entirely.
+// For example, FPJS renders "mmmmmmmmmmlli" in both "sans-serif-thin"
+// and "sans-serif" and compares widths. If they differ, the font exists.
+//
+// This MUST also be called from the font MATCHING/FALLBACK path:
+//   third_party/blink/renderer/platform/fonts/font_fallback_list.cc
+//   third_party/blink/renderer/platform/fonts/font_selector.cc
+//
+// When IsFontAvailableForProfile() returns false, the font matching
+// system should treat the font as unavailable and fall back to the
+// default family. This prevents detection via rendering measurement.
 // ====================================================================
 bool IsFontAvailableForProfile(const std::string& font_family) {
   static std::unordered_set<std::string> allowed_cache;
@@ -169,6 +184,15 @@ bool IsFontAvailableForProfile(const std::string& font_family) {
     for (const auto& f : fonts) {
       allowed_cache.insert(f);
     }
+    // Also add generic family names that must always be available
+    allowed_cache.insert("serif");
+    allowed_cache.insert("sans-serif");
+    allowed_cache.insert("monospace");
+    allowed_cache.insert("cursive");
+    allowed_cache.insert("fantasy");
+    allowed_cache.insert("system-ui");
+    // Do NOT add "sans-serif-thin" — it's an Android-specific font that
+    // leaks as a fingerprint signal. FPJS specifically probes for it.
     cached_manufacturer = p.manufacturer;
   }
 

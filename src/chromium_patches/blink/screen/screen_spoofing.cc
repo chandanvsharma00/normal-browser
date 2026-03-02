@@ -135,4 +135,63 @@ unsigned short ScreenOrientation::angle() const {
   return 0;
 }
 
+// ====================================================================
+// VisualViewport dimensions — CRITICAL FIX (2026-03-02)
+// File: third_party/blink/renderer/core/frame/visual_viewport.cc
+//
+// FPJS also checks window.visualViewport.width/height.
+// If these don't match our spoofed innerWidth/innerHeight,
+// the inconsistency reveals tampering.
+// ====================================================================
+double VisualViewport::width() const {
+  auto* client = normal_browser::GhostProfileClient::Get();
+  if (client && client->IsReady()) {
+    const auto& p = client->GetProfile();
+    return static_cast<double>(p.screen_width) / p.density;
+  }
+  // Fallback to original
+  return GetFrame()->View()->GetVisualViewport().VisibleWidthCSSPx();
+}
+
+double VisualViewport::height() const {
+  auto* client = normal_browser::GhostProfileClient::Get();
+  if (client && client->IsReady()) {
+    const auto& p = client->GetProfile();
+    // Subtract Chrome UI (URL bar ~56dp) in CSS pixels
+    int total_css_h = static_cast<int>(p.screen_height / p.density);
+    return static_cast<double>(total_css_h - 56);
+  }
+  return GetFrame()->View()->GetVisualViewport().VisibleHeightCSSPx();
+}
+
+// ====================================================================
+// CSS Media Query: device-width / device-height
+// File: third_party/blink/renderer/core/css/media_values.cc
+//       → MediaValues::DeviceWidth() / DeviceHeight()
+//
+// FPJS uses matchMedia('(device-width: Xpx)') to probe the real
+// screen size. If our Screen::width() returns spoofed values but
+// the CSS media query returns real values, it's a mismatch.
+//
+// APPLY IN: third_party/blink/renderer/core/css/media_values_cached.cc
+// ====================================================================
+int GetSpoofedCSSDeviceWidth() {
+  auto* client = normal_browser::GhostProfileClient::Get();
+  if (client && client->IsReady()) {
+    const auto& p = client->GetProfile();
+    // CSS device-width is in CSS pixels = physical / density
+    return static_cast<int>(p.screen_width / p.density);
+  }
+  return 412;  // Safe default
+}
+
+int GetSpoofedCSSDeviceHeight() {
+  auto* client = normal_browser::GhostProfileClient::Get();
+  if (client && client->IsReady()) {
+    const auto& p = client->GetProfile();
+    return static_cast<int>(p.screen_height / p.density);
+  }
+  return 915;  // Safe default
+}
+
 }  // namespace blink

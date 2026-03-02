@@ -108,11 +108,21 @@ do_patch() {
     exit 1
   fi
 
-  # Run the patch application script
+  # Step 2a: Copy all new files into the Chromium tree
+  log_info "Copying patch files..."
   bash "$SCRIPT_DIR/apply_patches.sh" "$CHROMIUM_SRC"
 
-  log_info "Patches applied! Manual source edits still required."
-  log_info "See patch files for inline instructions."
+  # Step 2b: Apply hook-point edits to existing Chromium files
+  log_info "Applying hook points to existing Chromium sources..."
+  bash "$SCRIPT_DIR/apply_hook_points.sh" "$CHROMIUM_SRC"
+
+  # Step 2c: Show BUILD.gn changes needed
+  log_info "BUILD.gn changes needed (apply manually):"
+  bash "$SCRIPT_DIR/apply_build_gn_patches.sh" "$CHROMIUM_SRC"
+
+  log_info "Patches applied!"
+  log_warn "Review apply_build_gn_patches.sh output and apply BUILD.gn edits manually."
+  log_warn "Also check apply_hook_points.sh output for any FAIL entries."
 }
 
 # ====================================================================

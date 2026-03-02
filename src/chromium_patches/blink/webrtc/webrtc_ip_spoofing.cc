@@ -51,7 +51,7 @@ const std::regex kLinkLocalIPv6Regex(
 }  // namespace
 
 std::string SpoofICECandidateIP(const std::string& candidate_sdp) {
-  auto* client = GhostProfileClient::Get();
+  auto* client = normal_browser::GhostProfileClient::Get();
   if (!client || !client->IsReady()) return candidate_sdp;
   const auto& profile = client->GetProfile();
   if (profile.fake_local_ip.empty()) return candidate_sdp;
@@ -81,7 +81,7 @@ std::string SpoofICECandidateIP(const std::string& candidate_sdp) {
 // Where to call: Same as PATCH 1.
 // ====================================================================
 std::string SpoofMDNSCandidate(const std::string& candidate_sdp) {
-  auto* client = GhostProfileClient::Get();
+  auto* client = normal_browser::GhostProfileClient::Get();
   if (!client || !client->IsReady()) return candidate_sdp;
   const auto& profile = client->GetProfile();
 

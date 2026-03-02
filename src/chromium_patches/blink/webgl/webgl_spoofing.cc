@@ -8,6 +8,7 @@
 
 #include "third_party/blink/renderer/core/ghost_profile_client.h"
 
+#include "gpu/config/gpu_info.h"
 #include <cstdio>
 
 namespace gpu {
@@ -156,36 +157,27 @@ std::string GetSpoofedGLExtensions() {
 }
 
 // ====================================================================
-// WebGL rendering noise (shader precision perturbation)
-// File: third_party/angle/src/libANGLE/renderer/
-//       gl/ShaderGL.cpp or ShaderModule.cpp
+// REMOVED: ApplyWebGLShaderNoise()
 //
-// Add per-session precision hint to fragment shader compilation.
-// This produces subtly different WebGL renders per session.
+// Injecting a constant into fragment shaders was DETECTABLE by FPJS:
+// 1. The "// nb" comment and "_nb_bias" constant name are searchable
+//    in compiled shader source (FPJS calls getShaderSource()).
+// 2. Even without the name, the extra constant changes shader
+//    compilation timing and output in a way that doesn't match any
+//    known GPU driver behavior.
+// 3. FPJS compares WebGL canvas renders against known GPU baselines.
+//    The shader modification produces output that matches no real GPU,
+//    triggering anomaly detection.
+//
+// The correct WebGL fingerprint variation is ALREADY achieved by:
+// - GL_RENDERER / GL_VENDOR / GL_VERSION string spoofing (above)
+// - GL extension list from the GPU database (per-SoC)
+// - GL parameter limits (max texture size, etc.)
+// These make WebGL report as a different GPU, which naturally produces
+// different renders due to different driver implementations.
+//
+// Real browsers do NOT modify shader source — this was the most
+// obvious tampering signal in the WebGL stack.
 // ====================================================================
-void ApplyWebGLShaderNoise(std::string& shader_source) {
-  auto* client = normal_browser::GhostProfileClient::Get();
-  if (!client || !client->IsReady()) return;
-
-  float seed = client->GetProfile().webgl_noise_seed;
-  if (seed == 0.0f) return;
-
-  // Insert a constant declaration that subtly affects floating point
-  // precision in the shader. This changes WebGL canvas hashes.
-  // The constant is small enough to be invisible but affects rounding.
-  char noise_inject[256];
-  snprintf(noise_inject, sizeof(noise_inject),
-           "\n// nb\nconst highp float _nb_bias = %.10f;\n",
-           seed * 0.0001);
-
-  // Insert after the first #version or precision declaration.
-  size_t pos = shader_source.find("precision ");
-  if (pos != std::string::npos) {
-    size_t end = shader_source.find(';', pos);
-    if (end != std::string::npos) {
-      shader_source.insert(end + 1, noise_inject);
-    }
-  }
-}
 
 }  // namespace gpu::gles2

@@ -79,43 +79,31 @@ void ApplyCanvasNoise_GlyphMetrics(float* advance_x, float* advance_y,
 // minor perturbation. Apply gamma shift at the compositing stage.
 // =================================================================
 
-// Apply per-session gamma shift to canvas compositing.
-// Called from CanvasResourceProvider::ProduceCanvasResource().
-void ApplyCanvasNoise_Compositing(uint8_t* pixels,
-                                   int width,
-                                   int height,
-                                   int stride) {
-  auto* client = normal_browser::GhostProfileClient::Get();
-  if (!client || !client->IsReady()) return;
-
-  float seed = client->GetProfile().canvas_noise_seed;
-  if (seed == 0.0f) return;
-
-  // Apply deterministic 1-bit noise to a sparse selection of pixels.
-  uint32_t hash = 0;
-  memcpy(&hash, &seed, sizeof(hash));
-
-  for (int y = 0; y < height; y += 17) {      // Every 17th row
-    for (int x = 0; x < width; x += 13) {     // Every 13th pixel
-      uint32_t idx = y * stride + x * 4;       // RGBA, 4 bytes per pixel
-      if (idx + 3 >= static_cast<uint32_t>(height * stride)) break;
-
-      // Deterministic channel selection.
-      hash = ((hash >> 16) ^ hash) * 0x45D9F3Bu;
-      int channel = hash & 3;       // 0=R, 1=G, 2=B, 3=skip
-      if (channel == 3) continue;   // Skip alpha
-
-      int delta = (hash & 4) ? 1 : -1;  // ±1 to color value
-      int current = pixels[idx + channel];
-      current += delta;
-      if (current < 0) current = 0;
-      if (current > 255) current = 255;
-      pixels[idx + channel] = static_cast<uint8_t>(current);
-
-      hash ^= hash << 5;
-    }
-  }
-}
+// =================================================================
+// REMOVED: ApplyCanvasNoise_Compositing()
+//
+// This function was DETECTED by FPJS Pro because:
+// 1. Sparse grid pattern (every 17th row × 13th pixel) is NOT how
+//    real GPU rendering variation works — real variation affects ALL
+//    pixels through anti-aliasing and GPU-level rounding.
+// 2. FPJS renders identical canvas content in two contexts and
+//    compares — if noise is consistent but non-standard, it's flagged
+//    as Brave-like "farbling" (tampering score = 1.0).
+// 3. ±1 bit RGB noise on a regular grid is trivially distinguishable
+//    from genuine cross-device rendering differences.
+//
+// CORRECT APPROACH: The glyph-level perturbation in
+// ApplyCanvasNoise_GlyphMetrics() already produces natural variation
+// by modifying sub-pixel advance widths DURING text rasterization.
+// This changes anti-aliasing patterns organically at the GPU level,
+// producing different canvas hashes without any detectable post-
+// processing artifacts. No compositing-stage modification needed.
+//
+// For non-text canvas content (shapes, gradients), real devices
+// already produce different results due to GPU driver differences.
+// Our WebGL parameter spoofing (gl_renderer, gl_extensions) is
+// sufficient — adding pixel noise on top is counterproductive.
+// =================================================================
 
 // =================================================================
 // PATCH 3: ClientRect / Element sizing noise

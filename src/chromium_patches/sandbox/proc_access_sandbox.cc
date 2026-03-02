@@ -21,7 +21,7 @@
 //   3. sandbox/linux/seccomp-bpf/sandbox_bpf.cc
 //      Hook the open/openat trap handler.
 
-#include "chromium_patches/blink/anti_bot/anti_bot_markers.h"
+#include "third_party/blink/renderer/core/anti_bot/anti_bot_markers.h"
 
 #include <cerrno>
 #include <cstring>
@@ -96,7 +96,7 @@ ResultExpr RestrictOpenForGhostMode() {
 // Integration: base/files/file_util_posix.cc
 //   In base::File::Initialize() or base::PathExists():
 //
-//   #include "chromium_patches/blink/anti_bot/anti_bot_markers.h"
+//   #include "third_party/blink/renderer/core/anti_bot/anti_bot_markers.h"
 //   ...
 //   if (blink::ShouldBlockProcAccess(path.value().c_str())) {
 //       error_details = FILE_ERROR_NOT_FOUND;

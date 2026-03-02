@@ -4,7 +4,7 @@
 // Maps DeviceProfile (device_profile.h) → GhostDeviceProfile (mojom).
 // The mojom field names match RendererProfile in ghost_profile_client.h.
 
-#include "content/browser/ghost_profile_host.h"
+#include "content/browser/ghost_profile/ghost_profile_host.h"
 
 #include "device_profile_generator/device_profile.h"
 #include "device_profile_generator/gpu_database.h"

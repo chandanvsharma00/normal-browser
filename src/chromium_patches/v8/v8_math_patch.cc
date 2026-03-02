@@ -33,13 +33,29 @@ namespace v8_math_patch {
 
 // ====================================================================
 // Helper: Get the math noise seed from profile
-// Must use GhostProfileClient (renderer-side), NOT DeviceProfileStore
-// (browser-side), since V8 runs in the renderer process.
+//
+// IMPORTANT CHANGE: ULP noise has been DISABLED.
+//
+// REASON: FPJS Pro hashes the output of Math.sin, cos, tan, atan2, exp,
+// expm1, log, log1p, cbrt, sinh, cosh, tanh = 13+ functions across
+// specific inputs (e.g., Math.tan(-1e300), Math.atan2(1,2)).
+// The combined hash is compared against a database of known results
+// for EVERY real CPU (Cortex-X4, A78, A55, Exynos M1, etc.).
+//
+// Our FDLIBM implementation produces outputs matching Java's StrictMath,
+// which corresponds to a KNOWN fingerprint ("FDLIBM/Java pattern").
+// Many real devices (older Android with software FP) produce this exact
+// pattern. So pure FDLIBM output is SAFE — it looks like a real device.
+//
+// Adding ±1-2 ULP noise on top produces a hash that matches NO known
+// CPU, which is an immediate anomaly signal. Removing the noise means
+// all sessions produce the same Math hash — but that hash matches
+// real devices, so FPJS won't flag it.
 // ====================================================================
 static uint64_t GetMathSeed() {
-  auto* client = normal_browser::GhostProfileClient::Get();
-  if (!client || !client->IsReady()) return 0;
-  return client->GetProfile().math_seed;
+  // Disabled — always return 0 so no ULP noise is applied.
+  // Pure FDLIBM results match known device patterns.
+  return 0;
 }
 
 // ====================================================================

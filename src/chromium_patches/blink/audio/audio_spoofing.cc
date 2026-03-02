@@ -132,57 +132,41 @@ CompressorParams ApplyCompressorBias(const CompressorParams& original) {
 }
 
 // ====================================================================
-// AnalyserNode — getFloatFrequencyData noise injection
+// REMOVED: ApplyAnalyserNoise()
+//
+// Post-processing noise on AnalyserNode output is DETECTABLE by FPJS.
+// FPJS calls getFloatFrequencyData() multiple times on the same audio —
+// if the base signal is identical but noise differs from known device
+// patterns, it flags tampering. The compressor bias (above) already
+// produces naturally different audio fingerprints by modifying the
+// actual DSP parameters. Output-stage noise is counterproductive.
 // ====================================================================
-void ApplyAnalyserNoise(float* frequency_data, unsigned length) {
-  auto* client = normal_browser::GhostProfileClient::Get();
-  if (!client || !client->IsReady()) return;
-
-  uint64_t seed = SeedToU64(client->GetProfile().audio_context_seed);
-  if (seed == 0) return;
-
-  for (unsigned i = 0; i < length; ++i) {
-    float noise = static_cast<float>(
-        AudioNoise(seed, 0xFF700000ULL + i, 0.0001));
-    frequency_data[i] += noise;
-  }
-}
 
 // ====================================================================
-// getFloatTimeDomainData noise injection
+// REMOVED: ApplyTimeDomainNoise()
+//
+// Same issue as ApplyAnalyserNoise() — post-processing time domain
+// data adds detectable artifacts. Removed to avoid FPJS tampering flag.
 // ====================================================================
-void ApplyTimeDomainNoise(float* time_data, unsigned length) {
-  auto* client = normal_browser::GhostProfileClient::Get();
-  if (!client || !client->IsReady()) return;
-
-  uint64_t seed = SeedToU64(client->GetProfile().audio_context_seed);
-  if (seed == 0) return;
-
-  for (unsigned i = 0; i < length; ++i) {
-    float noise = static_cast<float>(
-        AudioNoise(seed, 0x7DE00000ULL + i, 0.00005));
-    time_data[i] += noise;
-  }
-}
 
 // ====================================================================
-// OfflineAudioContext rendering noise
+// REMOVED: ApplyOfflineRenderNoise()
+//
+// This was the MOST DETECTABLE audio tampering signal. Modifying
+// every 17th sample in the offline render output creates a sparse
+// noise pattern identical to Brave's audio farbling. FPJS's standard
+// test (OscillatorNode → DynamicsCompressorNode → startRendering())
+// specifically checks for this pattern.
+//
+// The correct approach is already implemented above:
+// - ApplyCompressorBias() modifies DynamicsCompressor thresholds
+//   by ±0.0001, which changes the compression curve and produces
+//   naturally different output samples — indistinguishable from
+//   real hardware variation in audio processing.
+// - ApplyOscillatorPhaseOffset() adds sub-sample phase offset
+//   which affects the base signal generation.
+// These together produce unique audio fingerprints without any
+// detectable post-processing artifacts.
 // ====================================================================
-void ApplyOfflineRenderNoise(float* buffer, unsigned num_frames,
-                             unsigned num_channels) {
-  auto* client = normal_browser::GhostProfileClient::Get();
-  if (!client || !client->IsReady()) return;
-
-  uint64_t seed = SeedToU64(client->GetProfile().audio_context_seed);
-  if (seed == 0) return;
-
-  for (unsigned ch = 0; ch < num_channels; ++ch) {
-    for (unsigned i = 0; i < num_frames; i += 17) {
-      uint64_t idx = 0x0F100000ULL + ch * num_frames + i;
-      float noise = static_cast<float>(AudioNoise(seed, idx, 0.0001));
-      buffer[ch * num_frames + i] += noise;
-    }
-  }
-}
 
 }  // namespace blink

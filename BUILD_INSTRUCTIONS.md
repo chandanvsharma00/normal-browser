@@ -87,34 +87,39 @@ gn gen out/Debug --args='
 
 ## Step 3: Apply Normal Browser Patches
 
-Clone this repo and run the patch application script:
+Clone this repo and run the three patch scripts in order:
 
 ```bash
 # Clone Normal Browser source
 cd ~/chromium
-git clone https://github.com/arjunkishannohal/normal-browser.git normal-browser-patches
+git clone https://github.com/nicebrowser/normal-browser.git normal-browser-patches
 
-# Run the patch script
-cd ~/chromium/src
-bash ../normal-browser-patches/apply_patches.sh
+# Step 3a: Copy all new files into the Chromium tree
+bash normal-browser-patches/scripts/apply_patches.sh ~/chromium/src
+
+# Step 3b: Apply hook-point edits to existing Chromium files
+bash normal-browser-patches/scripts/apply_hook_points.sh ~/chromium/src
+
+# Step 3c: Review BUILD.gn changes (prints what to add manually)
+bash normal-browser-patches/scripts/apply_build_gn_patches.sh ~/chromium/src
 ```
 
-### What `apply_patches.sh` Does
+### What the scripts do
 
-The script copies our source files into the correct locations within the Chromium tree and patches existing Chromium files to hook our code in. Here's the mapping:
+**`apply_patches.sh`** copies our source files into the correct locations within the Chromium tree. **`apply_hook_points.sh`** inserts `#include` directives and function calls into existing Chromium files so our code gets invoked. **`apply_build_gn_patches.sh`** reports what BUILD.gn edits are needed.
 
 #### A. New Files (copied into Chromium tree)
 
 | Our File | Chromium Destination |
 |----------|---------------------|
-| `src/device_profile_generator/*` | `components/device_profile_generator/` |
-| `src/software_math/*` | `components/software_math/` |
-| `src/tls_randomizer/*` | `components/tls_randomizer/` |
+| `src/device_profile_generator/*` | `device_profile_generator/` |
+| `src/software_math/*` | `software_math/` |
+| `src/tls_randomizer/*` | `tls_randomizer/` |
 | `src/chromium_patches/blink/ghost_profile_client.h` | `third_party/blink/renderer/core/ghost_profile_client.h` |
 | `src/chromium_patches/blink/ghost_profile_client.cc` | `third_party/blink/renderer/core/ghost_profile_client.cc` |
 | `src/chromium_patches/blink/navigator/navigator_spoofing.cc` | `third_party/blink/renderer/core/frame/navigator_spoofing.cc` |
 | `src/chromium_patches/blink/screen/screen_spoofing.cc` | `third_party/blink/renderer/core/frame/screen_spoofing.cc` |
-| `src/chromium_patches/blink/canvas/canvas_spoofing.cc` | `third_party/blink/renderer/modules/canvas/canvas_spoofing.cc` |
+| `src/chromium_patches/blink/canvas/canvas_spoofing.cc` | `third_party/blink/renderer/modules/canvas/canvas2d/canvas_spoofing.cc` |
 | `src/chromium_patches/blink/webgl/webgl_spoofing.cc` | `third_party/blink/renderer/modules/webgl/webgl_spoofing.cc` |
 | `src/chromium_patches/blink/audio/audio_spoofing.cc` | `third_party/blink/renderer/modules/webaudio/audio_spoofing.cc` |
 | `src/chromium_patches/blink/fonts/font_spoofing.cc` | `third_party/blink/renderer/platform/fonts/font_spoofing.cc` |
@@ -128,7 +133,7 @@ The script copies our source files into the correct locations within the Chromiu
 | `src/chromium_patches/blink/anti_bot/anti_bot_markers.cc` | `third_party/blink/renderer/core/anti_bot/anti_bot_markers.cc` |
 | `src/chromium_patches/v8/v8_math_patch.h` | `v8/src/builtins/v8_math_patch.h` |
 | `src/chromium_patches/v8/v8_math_patch.cc` | `v8/src/builtins/v8_math_patch.cc` |
-| `src/chromium_patches/content/ghost_profile.mojom` | `content/browser/ghost_profile/ghost_profile.mojom` |
+| `src/chromium_patches/content/ghost_profile.mojom` | `content/common/ghost_profile.mojom` |
 | `src/chromium_patches/content/ghost_profile_host.h` | `content/browser/ghost_profile/ghost_profile_host.h` |
 | `src/chromium_patches/content/ghost_profile_host.cc` | `content/browser/ghost_profile/ghost_profile_host.cc` |
 | `src/chromium_patches/browser/browser_startup_wiring.h` | `chrome/browser/ghost/browser_startup_wiring.h` |

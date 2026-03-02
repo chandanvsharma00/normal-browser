@@ -10,6 +10,20 @@
 //   services/network/public/cpp/header_util.cc
 //   components/embedder_support/user_agent_utils.cc (Client Hints)
 //
+// CRITICAL FIX (2026-03-02):
+//   The previous implementation only patched GetUserAgent() / BuildSpoofedUserAgent().
+//   However, Chrome 110+ uses User-Agent Reduction which overrides the UA string
+//   to a generic "Mozilla/5.0 (Linux; Android 10; K) ...Chrome/X.0.0.0..." format.
+//   Additionally, FPJS reads the real device model via Sec-CH-UA-Model high-entropy
+//   Client Hints, which are populated from blink::UserAgentMetadata — a SEPARATE
+//   data structure that our previous patches did NOT intercept.
+//
+//   RESULT: Real device model "22081212G" (Xiaomi 12T Pro) leaked through Client
+//   Hints, completely bypassing our User-Agent spoofing.
+//
+//   FIX: We now ALSO patch GetUserAgentMetadata() to override the UserAgentMetadata
+//   struct, AND disable User-Agent Reduction so our full UA string is sent.
+//
 // All HTTP headers are set here at the network layer so they are
 // consistent across ALL requests (XHR, fetch, navigation, subresource).
 
@@ -68,6 +82,150 @@ std::string BuildSpoofedUserAgent() {
   const auto& p = store->GetProfile();
   // Use the pre-built UA string from profile generation
   return p.user_agent;
+}
+
+// ====================================================================
+// NEW PATCH: UserAgentMetadata Override
+// File: components/embedder_support/user_agent_utils.cc
+//       → GetUserAgentMetadata()
+//
+// CRITICAL FIX: Chrome populates a blink::UserAgentMetadata struct that
+// is used for ALL Client Hints headers AND for the reduced User-Agent.
+// Previously we only patched the UA string, but Chrome's UA Reduction
+// feature (active since Chrome 110) ignores the UA string and uses
+// UserAgentMetadata to construct a reduced UA like:
+//   "Mozilla/5.0 (Linux; Android 10; K) ...Chrome/130.0.0.0..."
+//
+// The real device model "22081212G" leaked through this struct via
+// Sec-CH-UA-Model when FPJS requested high-entropy Client Hints.
+//
+// We MUST override GetUserAgentMetadata() to return profile values.
+//
+// INTEGRATION: In components/embedder_support/user_agent_utils.cc,
+// replace the body of GetUserAgentMetadata() with a call to this:
+// ====================================================================
+
+// Returns a fully populated UserAgentMetadata matching the spoofed profile.
+// The caller must copy these values into blink::UserAgentMetadata.
+//
+// APPLY IN: components/embedder_support/user_agent_utils.cc
+//   blink::UserAgentMetadata GetUserAgentMetadata(...) {
+//     auto spoofed = normal_browser::http::GetSpoofedUserAgentMetadata();
+//     if (spoofed.has_value) return spoofed.metadata;
+//     ... original code ...
+//   }
+struct SpoofedUserAgentMetadata {
+  bool has_value = false;
+
+  // Brand version list (Sec-CH-UA and Sec-CH-UA-Full-Version-List)
+  struct BrandVersion {
+    std::string brand;
+    std::string major_version;
+    std::string full_version;
+  };
+  std::vector<BrandVersion> brand_version_list;
+
+  // Sec-CH-UA-Full-Version
+  std::string full_version;
+
+  // Sec-CH-UA-Platform
+  std::string platform;
+
+  // Sec-CH-UA-Platform-Version
+  std::string platform_version;
+
+  // Sec-CH-UA-Arch
+  std::string architecture;
+
+  // Sec-CH-UA-Model
+  std::string model;
+
+  // Sec-CH-UA-Mobile
+  bool mobile = true;
+
+  // Sec-CH-UA-Bitness
+  std::string bitness;
+
+  // Sec-CH-UA-WoW64
+  bool wow64 = false;
+};
+
+SpoofedUserAgentMetadata GetSpoofedUserAgentMetadata() {
+  SpoofedUserAgentMetadata meta;
+
+  auto* store = DeviceProfileStore::Get();
+  if (!store || !store->HasProfile()) {
+    meta.has_value = false;
+    return meta;
+  }
+  meta.has_value = true;
+
+  const auto& p = store->GetProfile();
+  std::string major = std::to_string(p.chrome_major_version);
+
+  // Brand list: must include Chromium, Google Chrome, and a GREASE brand.
+  // Order and GREASE brand name vary by Chrome version — use the profile's
+  // pre-computed ch_ua or build from version info.
+  meta.brand_version_list = {
+      {"Chromium", major, p.chrome_version},
+      {"Google Chrome", major, p.chrome_version},
+      {"Not-A.Brand", "99", "99.0.0.0"},
+  };
+
+  meta.full_version = p.chrome_version;
+  meta.platform = "Android";
+  meta.platform_version = std::to_string(p.android_version) + ".0.0";
+  meta.architecture = "arm";
+  meta.model = p.model;  // ← THIS IS THE KEY FIX: spoofed model, not real
+  meta.mobile = true;
+  meta.bitness = "64";
+  meta.wow64 = false;
+
+  return meta;
+}
+
+// ====================================================================
+// NEW PATCH: Disable User-Agent Reduction
+// File: components/embedder_support/user_agent_utils.cc
+//       → ShouldSendReducedUserAgent()  (or similar)
+// File: content/common/user_agent.cc
+//       → GetReducedUserAgent()
+//
+// Chrome 110+ sends a "reduced" User-Agent that replaces the real
+// model with "K" and the real Android version with "10":
+//   "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 ..."
+//
+// This defeats our UA spoofing because it strips our fake model/version.
+// We need to either:
+//   a) Disable UA Reduction entirely (send full UA with spoofed values), OR
+//   b) Override the reduced UA to use spoofed values
+//
+// Option (b) is better because real Chrome sends reduced UAs, and sending
+// a full UA is itself a fingerprinting signal (means modified browser).
+//
+// APPLY IN: content/common/user_agent.cc → GetReducedUserAgent() or
+//           components/embedder_support/user_agent_utils.cc
+// ====================================================================
+std::string GetSpoofedReducedUserAgent() {
+  auto* store = DeviceProfileStore::Get();
+  if (!store || !store->HasProfile()) {
+    return "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 "
+           "(KHTML, like Gecko) Chrome/" +
+           std::string(kChromeVersionMajor) + ".0.0.0 Mobile Safari/537.36";
+  }
+
+  const auto& p = store->GetProfile();
+  // Build a reduced UA that matches Chrome's format but:
+  // - Uses "Android 10; K" (standard reduced format, matches real Chrome)
+  // - Uses the profile's Chrome MAJOR version only (X.0.0.0)
+  // The real model is hidden behind "K" — this is correct Chrome behavior.
+  // The actual model is delivered via Sec-CH-UA-Model (which we spoof above).
+  char buf[512];
+  snprintf(buf, sizeof(buf),
+           "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 "
+           "(KHTML, like Gecko) Chrome/%d.0.0.0 Mobile Safari/537.36",
+           p.chrome_major_version);
+  return std::string(buf);
 }
 
 // ====================================================================

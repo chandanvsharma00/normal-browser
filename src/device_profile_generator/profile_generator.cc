@@ -19,6 +19,8 @@
 
 #include "device_profile_generator/profile_generator.h"
 
+#include "base/containers/span.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -282,12 +284,28 @@ std::string BuildUserAgent(const std::string& model,
 }
 
 // ==========================================================
-// Pick Chrome version (realistic recent versions)
+// Pick Chrome version
+//
+// CRITICAL FIX (2026-03-02):
+// Previously this generated random versions between 125-131.
+// This is WRONG because:
+// 1. The ACTUAL built Chromium binary is version 130 (from
+//    kChromeVersionFull = "130.0.6723.58" in http_header_patch.cc)
+// 2. V8's error message format changes between Chrome versions
+// 3. FPJS probes error messages (e.g., "Cannot read properties of null")
+//    and compares against the claimed Chrome version
+// 4. Internal browser behavior (feature flags, API availability)
+//    reflects the REAL built version, not a fake one
+//
+// The Chrome version MUST ALWAYS match the built binary.
+// Only the build/patch numbers can be randomized within the same major.
 // ==========================================================
 std::string PickChromeVersion(RNG& rng) {
-  int major = rng.Range(125, 131);
-  int build = rng.Range(6400, 6800);
-  int patch = rng.Range(50, 250);
+  // MUST match the actual built Chromium major version.
+  // Only randomize the build/patch within the same release branch.
+  int major = 130;  // Must match kChromeVersionMajor in http_header_patch.cc
+  int build = rng.Range(6700, 6750);  // Realistic range for Chrome 130
+  int patch = rng.Range(50, 150);
   return base::StringPrintf("%d.0.%d.%d", major, build, patch);
 }
 
@@ -337,8 +355,7 @@ float RamToDeviceMemory(int ram_mb) {
 DeviceProfile GenerateDeviceProfile(uint64_t master_seed) {
   // Step 0: Create master seed.
   if (master_seed == 0) {
-    crypto::RandBytes(reinterpret_cast<uint8_t*>(&master_seed),
-                      sizeof(master_seed));
+    crypto::RandBytes(base::as_writable_bytes(base::make_span(&master_seed, 1u)));
   }
   RNG rng(master_seed);
 
@@ -602,7 +619,7 @@ DeviceProfile GenerateDeviceProfile(uint64_t master_seed) {
 
 void RotateSessionSeeds(DeviceProfile& profile) {
   uint64_t new_seed;
-  crypto::RandBytes(reinterpret_cast<uint8_t*>(&new_seed), sizeof(new_seed));
+  crypto::RandBytes(base::as_writable_bytes(base::make_span(&new_seed, 1u)));
   RNG rng(new_seed);
 
   profile.canvas_noise_seed = rng.RangeF(-0.01f, 0.01f);
