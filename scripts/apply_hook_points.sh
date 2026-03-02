@@ -264,10 +264,10 @@ fi
 echo "[13/14] DOMRect getBoundingClientRect noise..."
 ELEMENT_CC="$CHROMIUM_SRC/third_party/blink/renderer/core/dom/element.cc"
 add_include "$ELEMENT_CC" '#include "third_party/blink/renderer/core/dom/domrect_spoofing.cc"'
-# Hook into getBoundingClientRect — insert noise call after rect computation
-insert_before "$ELEMENT_CC" \
-  "return DOMRect::Create" \
-  "  // Normal Browser: apply per-session DOMRect noise for fingerprint variation\\n  {\\n    double nx = rect.x(), ny = rect.y(), nw = rect.width(), nh = rect.height();\\n    blink::domrect_spoofing::ApplyDOMRectNoise(nx, ny, nw, nh);\\n  }"
+# Hook into GetBoundingClientRectNoLifecycleUpdate — insert noise after AdjustRect
+insert_after "$ELEMENT_CC" \
+  "AdjustRectForScrollAndAbsoluteZoom" \
+  "  // Normal Browser: Apply per-profile DOMRect noise for fingerprint variation\n  {\n    double nx = result.x(), ny = result.y();\n    double nw = result.width(), nh = result.height();\n    blink::domrect_spoofing::ApplyDOMRectNoise(nx, ny, nw, nh);\n    result.SetRect(static_cast<float>(nx), static_cast<float>(ny),\n                   static_cast<float>(nw), static_cast<float>(nh));\n  }"
 
 RANGE_CC="$CHROMIUM_SRC/third_party/blink/renderer/core/dom/range.cc"
 if [ -f "$RANGE_CC" ]; then
@@ -278,23 +278,20 @@ fi
 # HOOK 14: Font family blocking (prevents FPJS font detection)
 # ====================================================================
 echo "[14/14] Font family blocking for fingerprint prevention..."
-FONT_CACHE="$CHROMIUM_SRC/third_party/blink/renderer/platform/fonts/font_cache_android.cc"
-if [ -f "$FONT_CACHE" ]; then
-  add_include "$FONT_CACHE" '#include "third_party/
-echo "  4. Font blocking — in FontCache::GetFontPlatformData(), add:"
-echo "     if (blink::ShouldBlockFontFamily(family_name.Utf8())) return nullptr;"
-echo "  5. DOMRect noise — in Element::getBoundingClientRect(), call"
-echo "     blink::domrect_spoofing::ApplyDOMRectNoise() on the result rect."
-echo "  6. WebGL extensions — in getSupportedExtensions(), call"
-echo "     blink::webgl_spoofing::GetSpoofedWebGLExtensions() and return if set."blink/renderer/platform/fonts/font_spoofing.cc"'
-  echo "  NOTE: In FontCache::GetFontPlatformData(), add BEFORE font lookup:"
-  echo "    if (blink::ShouldBlockFontFamily(family_name.Utf8()))"
-  echo "      return nullptr;"
+# 14a: Add ShouldBlockFontFamily to font_spoofing.h (already done via apply_patches.sh)
+# 14b: Hook into FontCache::GetFontPlatformData in font_cache.cc
+FONT_CACHE_CC="$CHROMIUM_SRC/third_party/blink/renderer/platform/fonts/font_cache.cc"
+if [ -f "$FONT_CACHE_CC" ]; then
+  add_include "$FONT_CACHE_CC" '#include "third_party/blink/renderer/platform/fonts/font_spoofing.h"'
+  # Insert ShouldBlockFontFamily check after TRACE_EVENT in GetFontPlatformData
+  insert_after "$FONT_CACHE_CC" \
+    'TRACE_EVENT0.*FontCache::GetFontPlatformData' \
+    "  // Normal Browser: Block fingerprintable font families\n  if (creation_params.CreationType() == kCreateFontByFamily) {\n    String family_str = creation_params.Family().GetString();\n    if (!family_str.empty() \&\& blink::ShouldBlockFontFamily(family_str.Utf8())) {\n      return nullptr;\n    }\n  }"
 fi
 
 FONT_FALLBACK="$CHROMIUM_SRC/third_party/blink/renderer/platform/fonts/font_fallback_list.cc"
 if [ -f "$FONT_FALLBACK" ]; then
-  add_include "$FONT_FALLBACK" '#include "third_party/blink/renderer/platform/fonts/font_spoofing.cc"'
+  add_include "$FONT_FALLBACK" '#include "third_party/blink/renderer/platform/fonts/font_spoofing.h"'
 fi
 
 echo ""
