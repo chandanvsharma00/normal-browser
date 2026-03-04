@@ -185,7 +185,9 @@ void ResetAllPermissionsForGhostMode(
       ContentSettingsType::USB_GUARD,
       ContentSettingsType::BLUETOOTH_GUARD,
       ContentSettingsType::NFC,
-      ContentSettingsType::STORAGE_ACCESS,
+      // NOTE: STORAGE_ACCESS intentionally NOT cleared — cross-origin
+      // iframes (e.g. auth.magic.link in polymarket.com) need storage
+      // access for authentication flows (Magic Link SDK, etc.)
       ContentSettingsType::WINDOW_MANAGEMENT,
   };
 
